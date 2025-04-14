@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+html, body {
+  font-family: 'Mali', sans-serif;  /* ใช้ Sarabun หรือฟอนต์ที่ต้องการ */
+  font-weight: 300;  /* ค่าเริ่มต้น */
+  line-height: 1.6;
+  background: #222222;
+}
+
+* {
+  font-family: inherit;  /* ทุกองค์ประกอบใช้ฟอนต์จาก body */
+}
+
