@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { FaHome, FaUserAlt, FaCog, FaBook } from 'react-icons/fa';
 import { MdDisplaySettings } from "react-icons/md";
 import { CiStickyNote } from "react-icons/ci";
+import { VscDebugConsole } from "react-icons/vsc";
 
 type SidebarProps = {
   pageState: string;
@@ -17,6 +18,7 @@ const Sidebar: React.FC<SidebarProps> = ({ pageState, setPageState }) => {
     { name: 'Overview', icon: <FaHome />, key: 'overview' },
     { key: 'Line', label: 'Documents' },
     { name: 'Logs', icon: <MdDisplaySettings />, key: 'Log' },
+    { name: 'Consoles', icon: <VscDebugConsole />, key: 'Consoles' },
     { key: 'Line' },
     { name: 'Notes', icon: <CiStickyNote />, key: 'Note' },
     { name: 'Documents', icon: <FaBook />, key: 'Documents' },
