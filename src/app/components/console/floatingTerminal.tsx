@@ -1,36 +1,29 @@
-"use client";
-
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { FaTimes } from "react-icons/fa";
+import { handleTerminalCommand } from "./handleTerminalCommand.ts";
 
 interface FloatingTerminalProps {
   onClose: () => void;
+  onCommand: (action: { type: string; payload: any }) => void; // ✅ รับ onCommand
 }
 
-const FloatingTerminal: React.FC<FloatingTerminalProps> = ({ onClose }) => {
+const FloatingTerminal: React.FC<FloatingTerminalProps> = ({ onClose, onCommand }) => {
   const [input, setInput] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
 
   const handleCommand = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim()) {
-      setLogs((prev) => [...prev, `> ${input}`]);
-      // การจัดการคำสั่ง
-      if (input === "/help") {
-        setLogs((prev) => [
-          ...prev,
-          "Available commands: /help, /clear, FloatControl:True, FloatControl:False",
-        ]);
-      } else if (input === "/clear") {
-        setLogs([]);
-      } else if (input === "FloatControl:False") {
-        onClose();  // ปิด FloatingTerminal เมื่อคำสั่ง FloatControl:False
-      } else {
-        setLogs((prev) => [...prev, `Command not found: ${input}`]);
-      }
-      setInput("");
+    if (!input.trim()) return;
+  
+    const { logs: newLogs, action } = handleTerminalCommand(input);
+  setLogs(newLogs);
+
+    if (action) {
+      onCommand(action); // ✅ เรียกใช้ onCommand ที่ส่งจาก Home
     }
+
+    setInput("");
   };
 
   return (

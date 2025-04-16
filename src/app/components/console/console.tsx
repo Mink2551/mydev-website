@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
+import { handleTerminalCommand } from "./handleTerminalCommand.ts"; // 👈 นำเข้า parser ที่เราเขียนไว้
 
 interface ConsoleTerminalProps {
-  onCommand: (command: string) => void; // เพิ่ม props สำหรับส่งคำสั่ง
+  onCommand: (action: { type: string; payload: any }) => void; // เปลี่ยนให้ส่ง action object
 }
 
 function ConsoleTerminal({ onCommand }: ConsoleTerminalProps) {
@@ -12,18 +13,25 @@ function ConsoleTerminal({ onCommand }: ConsoleTerminalProps) {
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      if (input.trim() !== "") {
-        setCommands((prev) => [...prev, input]);
-        onCommand(input); // ส่งคำสั่งไปที่ Home
-        if (input === "/help") {
-          setCommands((prev) => [...prev, "Available commands: /help, /clear"]);
-        } else if (input === "/clear") {
-          setCommands([]);
-        }
-        setInput("");
+      e.preventDefault();
+      if (input.trim() === "") return;
+  
+      const { logs, action } = handleTerminalCommand(input);
+  
+      // ✅ เคลียร์ log หาก logs ว่าง (เช่น /clear)
+      if (logs.length === 0) {
+        setCommands([]);
+      } else {
+        setCommands((prev) => [...prev, ...logs]);
       }
+  
+      if (action) {
+        onCommand(action);
+      }
+  
+      setInput("");
     }
-  };
+  };  
 
   return (
     <div className="bg-black text-green-400 font-mono ml-14 p-4 min-h-screen overflow-auto">
@@ -32,11 +40,11 @@ function ConsoleTerminal({ onCommand }: ConsoleTerminalProps) {
       <div className="space-y-2">
         {commands.map((cmd, index) => (
           <div key={index}>
-            <span className="text-green-600">user@console:</span> <span>{cmd}</span>
+            <span className="text-green-600">user@console:</span>{" "}
+            <span>{cmd}</span>
           </div>
         ))}
 
-        {/* Input */}
         <div className="flex">
           <span className="text-green-600 mr-1">user@console:</span>
           <input

@@ -31,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ pageState, setPageState }) => {
     <div
       onMouseEnter={() => setIsOpen(true)}
       onMouseLeave={() => setIsOpen(false)}
-      className={`h-screen bg-[#222222] text-gray-500 fixed border-r border-gray-600 transition-all duration-300 ease-in-out ${isOpen ? 'w-48' : 'w-14'}`}
+      className={`h-screen bg-[#222222] text-gray-500 z-50 fixed border-r border-gray-600 transition-all duration-300 ease-in-out ${isOpen ? 'w-48' : 'w-14'}`}
     >
       <div className="flex flex-col p-2 space-y-2">
         {menuItems.map((item, index) => {
