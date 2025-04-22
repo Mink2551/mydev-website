@@ -37,6 +37,7 @@ export function handleTerminalCommand(input: string): TerminalAction {
     logs.push('- FloatConsole:True / FloatConsole:False');
     logs.push('- Lock <Path> <Password>');
     logs.push('- Unlock <Path> <Password>');
+    logs.push('- Find <FileName>');
     return { logs };
   }
 
@@ -80,9 +81,9 @@ export function handleTerminalCommand(input: string): TerminalAction {
     const path = normalizePath(parts[1]);
     const password = parts.slice(2).join(" ");
     // เปลี่ยน path เป็น path สำหรับ Firebase (แปลง / เป็น /children/ หลังจาก /Root)
-    const firebasePath = "folders" + path.split('/').map((p, idx) => {
-      return idx === 0 ? "" : `/children/${p}`;
-    }).join('');
+    const firebasePath =
+      "folders" +
+      path.split("/").map((p, idx) => (idx === 0 ? "" : `/children/${p}`)).join("");
     const folderRef = ref(db, firebasePath);
     update(folderRef, { locked: true, password: password });
     logs.push(`Folder ${path} locked.`);
@@ -99,9 +100,9 @@ export function handleTerminalCommand(input: string): TerminalAction {
     }
     const path = normalizePath(parts[1]);
     const password = parts.slice(2).join(" ");
-    const firebasePath = "folders" + path.split('/').map((p, idx) => {
-      return idx === 0 ? "" : `/children/${p}`;
-    }).join('');
+    const firebasePath =
+      "folders" +
+      path.split("/").map((p, idx) => (idx === 0 ? "" : `/children/${p}`)).join("");
     const folderRef = ref(db, firebasePath);
     onValue(
       folderRef,
@@ -120,6 +121,20 @@ export function handleTerminalCommand(input: string): TerminalAction {
       },
       { onlyOnce: true }
     );
+    return { logs };
+  }
+
+  // ===============================
+  // [6] Command: Find <FileName>
+  // ===============================
+  if (command === "Find") {
+    if (parts.length < 2) {
+      logs.push("Usage: Find <FileName>");
+      return { logs };
+    }
+    const keyword = parts.slice(1).join(" ").toLowerCase();
+    logs.push(`🔍 Searching for note with name "${keyword}"...`);
+    // ไม่ส่ง action กลับไป เพราะการเปิด Noteจะถูกจัดการใน UI ผ่าน Auto Complete
     return { logs };
   }
 

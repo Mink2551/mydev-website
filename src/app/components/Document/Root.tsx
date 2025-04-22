@@ -2,8 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { logActivity } from "../../components/console/logActivity";
-import { getDatabase, ref, onValue, push, remove, update, set } from "firebase/database";
+import { getDatabase, ref, onValue, push, remove, update, set, get } from "firebase/database";
 import { app } from "../../firebase/firebase";
+import { auth } from './../../firebase/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import {
   FaFolder,
   FaArrowLeft,
@@ -57,6 +59,15 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
   const [inputPassword, setInputPassword] = useState("");
   const [moveDestinationInput, setMoveDestinationInput] = useState("");
   const [allFolders, setAllFolders] = useState<FolderMap>({});
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  
+    useEffect(() => {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user || null);
+      });
+  
+      return () => unsubscribe();
+    }, []);
 
   const pathToRef = (path: string[]) =>
     ref(db, "folders/" + path.join("/children/"));
@@ -88,32 +99,25 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
           paths.push(`${paths[index - 1]}/children/${id}`);
         }
       });
-
-      const promises = paths.map(
-        (path) =>
-          new Promise<string>((resolve) => {
-            const refPath = ref(db, path);
-            onValue(
-              refPath,
-              (snapshot) => {
-                const data = snapshot.val();
-                resolve(data?.name || "...");
-              },
-              { onlyOnce: true }
-            );
-          })
-      );
-
+  
+      const promises = paths.map(async (path) => {
+        const refPath = ref(db, path);
+        const snapshot = await get(refPath);
+        const data = snapshot.val();
+        return data?.name || "unknown";
+      });
+  
       const names = await Promise.all(promises);
       setBreadcrumbNames(names);
     };
-
+  
     if (currentPath.length > 0) {
       loadBreadcrumbNames();
     } else {
       setBreadcrumbNames([]);
     }
   }, [currentPath, db]);
+
 
   const handleEnterFolder = (folder: Folder) => {
     if (folder.type === "folder") {
@@ -135,11 +139,11 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
     if (modal.type === "folder") {
       const newFolder: Folder = { id: "", name: inputName, type: "folder", children: [] };
       push(refPath, newFolder);
-      logActivity("Anonymous", "Create folder", inputName);
+      logActivity(currentUser.displayName, "Create folder", inputName);
     } else if (modal.type === "file") {
       const newFile: Folder = { id: "", name: inputName, type: "file" };
       push(refPath, newFile);
-      logActivity("Anonymous", "Create file", inputName);
+      logActivity(currentUser.displayName, "Create file", inputName);
     }
 
     setModal({ type: null });
@@ -155,24 +159,36 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
     const parentPath = currentPath.join("/children/");
     const itemRef = ref(db, `folders/${parentPath}/${modal.item.id}`);
     update(itemRef, { name: inputName });
-    logActivity("Anonymous", "Rename", inputName);
+    logActivity(currentUser.displayName, "Rename", inputName);
     setModal({ type: null });
     setInputName("");
     setInputPassword("");
   };
 
-  const handleDeleteSubmit = () => {
+  const handleDeleteSubmit = async () => {
     if (!modal.item) return;
     if (modal.item.password && modal.item.password !== inputPassword) {
       alert("Incorrect password!");
       return;
     }
+    // อ้างอิงไปยัง item ใน branch folders
     const itemRef = ref(db, `folders/${currentPath.join("/children/")}/${modal.item.id}`);
-    remove(itemRef);
-    logActivity("Anonymous", "Delete", inputName);
+    // ลบ item ใน branch folders
+    await remove(itemRef);
+    
+    // หากเป็นไฟล์ ให้ลบข้อมูล Note ที่เกี่ยวข้องด้วย (ใน branch notes และ files)
+    if (modal.item.type === "file") {
+      const noteRef = ref(db, `notes/${modal.item.id}`);
+      const fileRef = ref(db, `files/${modal.item.id}`);
+      await remove(noteRef);
+      await remove(fileRef);
+    }
+    
+    logActivity(currentUser.displayName, "Delete", modal.item.name);
     setModal({ type: null });
     setInputPassword("");
   };
+  
 
   const handleMoveSubmit = () => {
     if (!modal.item) return;
@@ -209,7 +225,7 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
           const newItemRef = push(targetRef);
           set(newItemRef, itemData);
           remove(sourceRef);
-          logActivity("Anonymous", "Move", inputName, {
+          logActivity(currentUser.displayName, "Move", inputName, {
             from: currentPath.join("/"),
             to: destinationPath.join("/")
           });
@@ -237,7 +253,7 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
     const parentPath = currentPath.join("/children/");
     const folderRef = ref(db, `folders/${parentPath}/${modal.item.id}`);
     update(folderRef, { locked: true, password: inputPassword });
-    logActivity("Anonymous", "Lock", inputName);
+    logActivity(currentUser.displayName, "Lock", inputName);
     setModal({ type: null });
     setInputPassword("");
   };
@@ -251,7 +267,7 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
     const parentPath = currentPath.join("/children/");
     const folderRef = ref(db, `folders/${parentPath}/${modal.item.id}`);
     update(folderRef, { locked: false, password: null });
-    logActivity("Anonymous", "Unlock", inputName);
+    logActivity(currentUser.displayName, "Unlock", inputName);
     // เมื่อ unlock แล้วให้เข้าสู่ folder นั้น
     setCurrentPath((prev) => [...prev, modal.item!.id]);
     setModal({ type: null });
@@ -370,163 +386,179 @@ const Root: React.FC<RootProps> = ({ onFileDoubleClick }) => {
               >
                 <FaTrash />
               </button>
-              <button
-                onClick={() => {
-                  setModal({ type: "move", item });
-                  setMoveDestinationInput("");
-                  setInputPassword("");
-                  setAllFolders({});
-                  loadAllFolders([], [], {}, setAllFolders);
-                }}
-                className="hover:text-blue-400"
-              >
-                <FaExchangeAlt />
-              </button>
               {item.type === "folder" && (
-                <button onClick={() => handleToggleLock(item)} className="hover:text-purple-500">
-                  {item.locked ? <FaLockOpen /> : <FaLock />}
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      setModal({ type: "move", item });
+                      setMoveDestinationInput("");
+                      setInputPassword("");
+                      loadAllFolders([], [], {}, setAllFolders);
+                    }}
+                    className="hover:text-blue-400"
+                  >
+                    <FaExchangeAlt />
+                  </button>
+                  <button
+                    onClick={() => handleToggleLock(item)}
+                    className="hover:text-purple-400"
+                  >
+                    {item.locked ? <FaLock /> : <FaLockOpen />}
+                  </button>
+                </>
               )}
             </div>
           </div>
         ))}
       </div>
 
+      {/* MODALS */}
       {modal.type && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-80 text-center max-h-[80vh] overflow-y-auto">
-            {modal.type === "folder" || modal.type === "file" ? (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 p-6 rounded shadow-md w-96 space-y-4">
+            {["folder", "file", "rename"].includes(modal.type) && (
               <>
-                <input
-                  className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-4"
-                  placeholder="Enter name"
-                  value={inputName}
-                  onChange={(e) => setInputName(e.target.value)}
-                />
-                <div className="flex justify-center gap-4">
-                  <button onClick={handleModalSubmit} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
-                    OK
-                  </button>
-                  <button onClick={() => setModal({ type: null })} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
-                    Cancel
-                  </button>
-              </div>
-              </>
-            ) : modal.type === "rename" ? (
-              <>
-                <p className="mb-4">Enter new name for <strong>{modal.item?.name}</strong>:</p>
-                <input
-                  className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-2"
-                  placeholder="New name"
-                  value={inputName}
-                  onChange={(e) => setInputName(e.target.value)}
-                />
-                {modal.item?.password && (
-                  <input
-                    className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-4"
-                    placeholder="Enter password"
-                    type="password"
-                    value={inputPassword}
-                    onChange={(e) => setInputPassword(e.target.value)}
-                  />
-                )}
-                <div className="flex justify-center gap-4">
-                  <button onClick={handleRenameSubmit} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
-                    OK
-                  </button>
-                  <button onClick={() => { setModal({ type: null }); setInputPassword(""); }} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : modal.type === "confirmDelete" ? (
-              <>
-                <p className="mb-4">Are you sure you want to delete <strong>{modal.item?.name}</strong>?</p>
-                {modal.item?.password && (
-                  <input
-                    className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-4"
-                    placeholder="Enter password"
-                    type="password"
-                    value={inputPassword}
-                    onChange={(e) => setInputPassword(e.target.value)}
-                  />
-                )}
-                <div className="flex justify-center gap-4">
-                  <button onClick={handleDeleteSubmit} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">
-                    Delete
-                  </button>
-                  <button onClick={() => { setModal({ type: null }); setInputPassword(""); }} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : modal.type === "move" ? (
-              <>
-                <h3 className="text-lg font-semibold mb-4">Move "{modal.item?.name}" to...</h3>
+                <h3 className="text-lg font-semibold">
+                  {modal.type === "rename" ? "Rename" : `Create ${modal.type}`}
+                </h3>
                 <input
                   type="text"
-                  placeholder="/Root/Folder1/Folder2"
-                  className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-2"
-                  value={moveDestinationInput}
-                  onChange={(e) => setMoveDestinationInput(e.target.value)}
+                  value={inputName}
+                  onChange={(e) => setInputName(e.target.value)}
+                  className="w-full p-2 bg-gray-800 rounded"
+                  placeholder="Enter name"
                 />
-                {modal.item?.password && (
+                {modal.type === "rename" && modal.item?.password && (
                   <input
-                    className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-4"
-                    placeholder="Enter password"
                     type="password"
                     value={inputPassword}
                     onChange={(e) => setInputPassword(e.target.value)}
+                    className="w-full p-2 bg-gray-800 rounded"
+                    placeholder="Enter password"
                   />
                 )}
-                <div className="flex justify-center gap-4">
-                  <button onClick={handleMoveSubmit} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
-                    Confirm
-                  </button>
-                  <button onClick={() => { setModal({ type: null }); setInputPassword(""); }} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setModal({ type: null })} className="text-gray-400">
                     Cancel
+                  </button>
+                  <button
+                    onClick={
+                      modal.type === "rename" ? handleRenameSubmit : handleModalSubmit
+                    }
+                    className="bg-blue-600 px-3 py-1 rounded"
+                  >
+                    Submit
                   </button>
                 </div>
               </>
-            ) : modal.type === "lock" ? (
+            )}
+
+            {modal.type === "confirmDelete" && (
               <>
-                <p className="mb-4">Enter password to lock <strong>{modal.item?.name}</strong>:</p>
+                <h3 className="text-lg font-semibold">Confirm Delete</h3>
+                {modal.item?.password && (
+                  <input
+                    type="password"
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    className="w-full p-2 bg-gray-800 rounded"
+                    placeholder="Enter password"
+                  />
+                )}
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setModal({ type: null })} className="text-gray-400">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteSubmit}
+                    className="bg-red-600 px-3 py-1 rounded"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modal.type === "move" && (
+              <>
+                <h3 className="text-lg font-semibold">Move To</h3>
                 <input
-                  className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-4"
-                  placeholder="Set password"
+                  type="text"
+                  value={moveDestinationInput}
+                  onChange={(e) => setMoveDestinationInput(e.target.value)}
+                  className="w-full p-2 bg-gray-800 rounded"
+                  placeholder="/Root/target-folder"
+                />
+                {modal.item?.password && (
+                  <input
+                    type="password"
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    className="w-full p-2 bg-gray-800 rounded"
+                    placeholder="Enter password"
+                  />
+                )}
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setModal({ type: null })} className="text-gray-400">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleMoveSubmit}
+                    className="bg-blue-600 px-3 py-1 rounded"
+                  >
+                    Move
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modal.type === "lock" && (
+              <>
+                <h3 className="text-lg font-semibold">Set Password</h3>
+                <input
                   type="password"
                   value={inputPassword}
                   onChange={(e) => setInputPassword(e.target.value)}
+                  className="w-full p-2 bg-gray-800 rounded"
+                  placeholder="Password"
                 />
-                <div className="flex justify-center gap-4">
-                  <button onClick={handleLockSubmit} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setModal({ type: null })} className="text-gray-400">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleLockSubmit}
+                    className="bg-purple-600 px-3 py-1 rounded"
+                  >
                     Lock
                   </button>
-                  <button onClick={() => { setModal({ type: null }); setInputPassword(""); }} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
-                    Cancel
-                  </button>
                 </div>
               </>
-            ) : modal.type === "unlock" ? (
+            )}
+
+            {modal.type === "unlock" && (
               <>
-                <p className="mb-4">Enter password to unlock <strong>{modal.item?.name}</strong>:</p>
+                <h3 className="text-lg font-semibold">Enter Password</h3>
                 <input
-                  className="w-full px-3 py-2 rounded bg-gray-700 text-white mb-4"
-                  placeholder="Enter password"
                   type="password"
                   value={inputPassword}
                   onChange={(e) => setInputPassword(e.target.value)}
+                  className="w-full p-2 bg-gray-800 rounded"
+                  placeholder="Password"
                 />
-                <div className="flex justify-center gap-4">
-                  <button onClick={handleUnlockSubmit} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
-                    Unlock
-                  </button>
-                  <button onClick={() => { setModal({ type: null }); setInputPassword(""); }} className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setModal({ type: null })} className="text-gray-400">
                     Cancel
                   </button>
-              </div>
+                  <button
+                    onClick={handleUnlockSubmit}
+                    className="bg-green-600 px-3 py-1 rounded"
+                  >
+                    Unlock
+                  </button>
+                </div>
               </>
-            ) : null}
+            )}
           </div>
         </div>
       )}

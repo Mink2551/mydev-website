@@ -47,33 +47,18 @@ export default function Home() {
     setPageState("Note");
   };
 
-  // ตัวอย่าง handler สำหรับคำสั่งที่ส่งมาจาก Floating Terminal (ถ้ามี)
+  // ตัวอย่าง handler สำหรับคำสั่งที่ส่งมาจาก Terminal (Floating หรือ Console)
   const handleConsoleCommand = (action: { type: string; payload: any }) => {
     switch (action.type) {
       case "toggle_terminal":
         setFloatingTerminalVisible(action.payload.visible);
         break;
-      case "create_folder":
-        console.log("Create folder:", action.payload);
+      case "open_note":
+        // เมื่อได้รับ action open_note ให้เปลี่ยนหน้าจอไปที่ Note
+        setSelectedNoteId(action.payload);
+        setPageState("Note");
         break;
-      case "create_note":
-        console.log("Create note:", action.payload);
-        break;
-      case "remove_folder":
-        console.log("Remove folder:", action.payload);
-        break;
-      case "remove_note":
-        console.log("Remove note:", action.payload);
-        break;
-      case "move_folder":
-        console.log("Move folder:", action.payload);
-        break;
-      case "move_note":
-        console.log("Move note:", action.payload);
-        break;
-      case "rename_note":
-        console.log("Rename note:", action.payload);
-        break;
+      // สามารถเพิ่มคำสั่งอื่นๆ ตามที่ต้องการได้ที่นี่
       default:
         console.warn("Unknown command:", action);
     }

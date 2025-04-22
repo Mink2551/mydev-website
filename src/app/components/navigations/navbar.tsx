@@ -8,8 +8,8 @@ import { writeLog } from '../../../../lib/logs';
 import Logo from '../../../../public/RoundLogo.png';
 
 function Navbar() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [logoutTime, setLogoutTime] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
